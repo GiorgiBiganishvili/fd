@@ -28,6 +28,13 @@ jobs:
           & tar.exe -xJf "source.tar.xz"
           if ($LASTEXITCODE -ne 0) { throw "Failed to extract source archive" }
           if (!(Test-Path ".\scripts\build_windows.ps1")) { throw "Source extraction did not produce build script" }
+          $specPath = ".\build\Transcriber.spec"
+          $spec = Get-Content $specPath -Raw
+          $spec = $spec.Replace('("assets/app.ico", "assets")', '("../assets/app.ico", "assets")')
+          $spec = $spec.Replace('["src/main.py"]', '["../src/main.py"]')
+          $spec = $spec.Replace('pathex=["src"]', 'pathex=["../src"]')
+          $spec = $spec.Replace('icon="assets/app.ico"', 'icon="../assets/app.ico"')
+          Set-Content -Path $specPath -Value $spec -Encoding utf8
 
       - name: Set up Python
         uses: actions/setup-python@v5
