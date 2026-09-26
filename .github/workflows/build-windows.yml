@@ -1,0 +1,107 @@
+name: Build Windows Installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Expand source archive
+        shell: pwsh
+        run: |
+          if (!(Test-Path "RussianTranscriberSource.zip")) { throw "RussianTranscriberSource.zip not found" }
+          Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: "x64"
+          cache: "pip"
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup --yes --no-progress
+          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $iscc) { throw "ISCC.exe not found after Inno Setup installation" }
+          "INNO_ISCC=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build application and installer
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy -Scope Process Bypass -Force
+          .\scripts\build_windows.ps1
+
+      - name: Verify installer is Windows PE
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          $bytes = [System.IO.File]::ReadAllBytes($installer)
+          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+            throw "Installer is not a valid Windows PE executable"
+          }
+          Write-Host "Verified MZ header: $installer"
+
+      - name: Silent install smoke test
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          $p = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Installer failed with exit code $($p.ExitCode)" }
+          $app = "C:\Program Files\Russian Transcriber\Transcriber.exe"
+          if (!(Test-Path $app)) { throw "Installed Transcriber.exe not found at $app" }
+          $proc = Start-Process -FilePath $app -PassThru
+          Start-Sleep -Seconds 5
+          if ($proc.HasExited -and $proc.ExitCode -ne 0) { throw "Installed application exited with code $($proc.ExitCode)" }
+          if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
+          Write-Host "Installed application launched successfully"
+
+      - name: Silent uninstall smoke test
+        shell: pwsh
+        run: |
+          $uninstaller = "C:\Program Files\Russian Transcriber\unins000.exe"
+          if (!(Test-Path $uninstaller)) { throw "Uninstaller not found" }
+          $p = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($p.ExitCode)" }
+          Write-Host "Uninstall completed successfully"
+
+      - name: Generate SHA256
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          $hash = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
+          "$hash  TranscriberSetup.exe" | Set-Content ".\dist_installer\SHA256SUMS.txt" -Encoding ascii
+          Write-Host "SHA256=$hash"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: RussianTranscriber-Windows-1.0.0
+          path: |
+            dist_installer/TranscriberSetup.exe
+            dist_installer/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: RussianTranscriber-build-logs
+          path: |
+            build/
+            *.log
+            dist_installer/SHA256SUMS.txt
+          if-no-files-found: ignore
