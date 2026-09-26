@@ -19,22 +19,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Expand source archive
+      - name: Reconstruct fixed source archive
         shell: pwsh
         run: |
-          if (!(Test-Path "source.tar.xz.b64")) { throw "source.tar.xz.b64 not found" }
-          $b64 = (Get-Content "source.tar.xz.b64" -Raw).Trim()
-          [System.IO.File]::WriteAllBytes("source.tar.xz", [Convert]::FromBase64String($b64))
-          & tar.exe -xJf "source.tar.xz"
-          if ($LASTEXITCODE -ne 0) { throw "Failed to extract source archive" }
-          if (!(Test-Path ".\scripts\build_windows.ps1")) { throw "Source extraction did not produce build script" }
-          $specPath = ".\build\Transcriber.spec"
-          $spec = Get-Content $specPath -Raw
-          $spec = $spec.Replace('("assets/app.ico", "assets")', '("../assets/app.ico", "assets")')
-          $spec = $spec.Replace('["src/main.py"]', '["../src/main.py"]')
-          $spec = $spec.Replace('pathex=["src"]', 'pathex=["../src"]')
-          $spec = $spec.Replace('icon="assets/app.ico"', 'icon="../assets/app.ico"')
-          Set-Content -Path $specPath -Value $spec -Encoding utf8
+          if (!(Test-Path "RussianTranscriberSource.b64")) { throw "RussianTranscriberSource.b64 not found" }
+          $b64 = (Get-Content "RussianTranscriberSource.b64" -Raw).Trim()
+          [System.IO.File]::WriteAllBytes("RussianTranscriberSource.zip", [Convert]::FromBase64String($b64))
+          Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
+          if (!(Test-Path ".\scripts\build_windows.ps1")) { throw "Source archive extraction failed" }
 
       - name: Set up Python
         uses: actions/setup-python@v5
