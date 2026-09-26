@@ -125,7 +125,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: RussianTranscriber-Windows-1.0.0
+          name: RussianTranscriber-Windows-1.0.1
           path: |
             dist_installer/TranscriberSetup.exe
             dist_installer/SHA256SUMS.txt
