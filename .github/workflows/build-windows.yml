@@ -23,7 +23,8 @@ jobs:
         shell: pwsh
         run: |
           if (!(Test-Path "RussianTranscriberSource.zip")) { throw "RussianTranscriberSource.zip not found" }
-          Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
+          & tar.exe -xf "RussianTranscriberSource.zip"
+          if ($LASTEXITCODE -ne 0) { throw "Failed to extract source archive" }
 
       - name: Set up Python
         uses: actions/setup-python@v5
