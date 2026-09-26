@@ -22,11 +22,15 @@ jobs:
       - name: Reconstruct fixed source archive
         shell: pwsh
         run: |
-          if (!(Test-Path "RussianTranscriberSource.b64")) { throw "RussianTranscriberSource.b64 not found" }
-          $b64 = (Get-Content "RussianTranscriberSource.b64" -Raw).Trim()
+          $parts = 0..4 | ForEach-Object { "source_v3.part{0:D2}" -f $_ }
+          foreach ($p in $parts) {
+            if (!(Test-Path $p)) { throw "Missing source chunk: $p" }
+          }
+          $b64 = ($parts | ForEach-Object { Get-Content $_ -Raw }) -join ""
           [System.IO.File]::WriteAllBytes("RussianTranscriberSource.zip", [Convert]::FromBase64String($b64))
           Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
           if (!(Test-Path ".\scripts\build_windows.ps1")) { throw "Source archive extraction failed" }
+          if ((Get-Content ".\VERSION" -Raw).Trim() -ne "1.0.1") { throw "Wrong source version" }
 
       - name: Set up Python
         uses: actions/setup-python@v5
