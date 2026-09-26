@@ -3,6 +3,8 @@ name: Build Windows Installer
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -17,11 +19,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Expand source archive
+      - name: Reconstruct fixed source archive
         shell: pwsh
         run: |
-          if (!(Test-Path "RussianTranscriberSource.zip")) { throw "RussianTranscriberSource.zip not found" }
+          $parts = 0..4 | ForEach-Object { "source_v3.part{0:D2}" -f $_ }
+          foreach ($p in $parts) {
+            if (!(Test-Path $p)) { throw "Missing source chunk: $p" }
+          }
+          $b64 = ($parts | ForEach-Object { Get-Content $_ -Raw }) -join ""
+          [System.IO.File]::WriteAllBytes("RussianTranscriberSource.zip", [Convert]::FromBase64String($b64))
           Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
+          if (!(Test-Path ".\scripts\build_windows.ps1")) { throw "Source archive extraction failed" }
+          if ((Get-Content ".\VERSION" -Raw).Trim() -ne "1.0.1") { throw "Wrong source version" }
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -43,6 +52,22 @@ jobs:
         run: |
           Set-ExecutionPolicy -Scope Process Bypass -Force
           .\scripts\build_windows.ps1
+
+      - name: End-to-end CPU transcription smoke test
+        shell: pwsh
+        run: |
+          .\.build-venv\Scripts\python.exe -m pip install edge-tts
+          .\.build-venv\Scripts\python.exe -m edge_tts --voice ru-RU-SvetlanaNeural --text "Привет. Это тест программы для транскрибации русской речи. Сейчас мы проверяем распознавание." --write-media test_ru.mp3
+          if (!(Test-Path ".\test_ru.mp3")) { throw "Russian test audio was not generated" }
+          $app = Resolve-Path ".\dist\Transcriber\Transcriber.exe"
+          $out = Join-Path $env:TEMP "transcriber-selftest.txt"
+          Remove-Item $out -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $app -ArgumentList @("--self-test", (Resolve-Path ".\test_ru.mp3"), "--self-test-output", $out) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "Packaged CPU transcription self-test failed with exit code $($p.ExitCode)" }
+          if (!(Test-Path $out)) { throw "Self-test output file was not created" }
+          $text = Get-Content $out -Raw -Encoding utf8
+          Write-Host "Transcribed text: $text"
+          if ($text -notmatch "[А-Яа-яЁё]") { throw "Self-test did not produce Russian text" }
 
       - name: Verify installer is Windows PE
         shell: pwsh
@@ -67,6 +92,14 @@ jobs:
           if ($proc.HasExited -and $proc.ExitCode -ne 0) { throw "Installed application exited with code $($proc.ExitCode)" }
           if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
           Write-Host "Installed application launched successfully"
+          $testAudio = Resolve-Path ".\test_ru.mp3"
+          $out = Join-Path $env:TEMP "installed-transcriber-selftest.txt"
+          Remove-Item $out -ErrorAction SilentlyContinue
+          $p2 = Start-Process -FilePath $app -ArgumentList @("--self-test", $testAudio, "--self-test-output", $out) -Wait -PassThru
+          if ($p2.ExitCode -ne 0) { throw "Installed application transcription self-test failed with exit code $($p2.ExitCode)" }
+          $txt = Get-Content $out -Raw -Encoding utf8
+          if ($txt -notmatch "[А-Яа-яЁё]") { throw "Installed application did not produce Russian text" }
+          Write-Host "Installed app transcription: $txt"
 
       - name: Silent uninstall smoke test
         shell: pwsh
@@ -88,7 +121,7 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: RussianTranscriber-Windows-1.0.0
+          name: RussianTranscriber-Windows-1.0.1
           path: |
             dist_installer/TranscriberSetup.exe
             dist_installer/SHA256SUMS.txt
