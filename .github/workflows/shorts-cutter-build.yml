@@ -28,6 +28,17 @@ jobs:
           $fp=(Get-Command ffprobe.exe).Source
           Copy-Item $ff tools\ffmpeg.exe
           Copy-Item $fp tools\ffprobe.exe
+      - name: Smoke-test exact 9x16 export pipeline
+        shell: pwsh
+        run: |
+          & tools\ffmpeg.exe -hide_banner -y -f lavfi -i "testsrc2=size=1280x720:rate=30" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 3 -c:v libx264 -pix_fmt yuv420p -c:a aac smoke_input.mp4
+          $vf="scale=w=1080:h=1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,hqdn3d=1.2:1.2:6:6,unsharp=5:5:0.35:5:5:0,format=yuv420p"
+          & tools\ffmpeg.exe -hide_banner -y -ss 0.5 -i smoke_input.mp4 -t 1.5 -map 0:v:0 -map '0:a:0?' -vf $vf -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart smoke_short.mp4
+          if ($LASTEXITCODE -ne 0) { throw "FFmpeg smoke export failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path smoke_short.mp4)) { throw "smoke_short.mp4 was not created" }
+          $size=(Get-Item smoke_short.mp4).Length
+          if ($size -lt 1024) { throw "smoke_short.mp4 is unexpectedly small: $size bytes" }
+          & tools\ffprobe.exe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 smoke_short.mp4
       - name: Build app
         shell: pwsh
         run: python -m PyInstaller --clean --noconfirm ShortsCutter.spec
