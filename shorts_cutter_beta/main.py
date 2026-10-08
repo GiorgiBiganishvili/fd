@@ -63,7 +63,7 @@ class Window(QWidget):
         row2=QHBoxLayout(); row2.addWidget(QLabel('Whisper:')); self.model=QComboBox(); self.model.addItems(['small','medium','base']); row2.addWidget(self.model); row2.addWidget(QLabel('OpenAI API key:')); self.key=QLineEdit(); self.key.setEchoMode(QLineEdit.Password); row2.addWidget(self.key,1); root.addLayout(row2)
         self.run=QPushButton('Анализировать'); self.run.clicked.connect(self.analyze); root.addWidget(self.run)
         self.pb=QProgressBar(); root.addWidget(self.pb); self.status=QLabel('Готов'); root.addWidget(self.status)
-        mid=QHBoxLayout(); self.list=QListWidget(); self.list.currentItemChanged.connect(self.show); mid.addWidget(self.list,1); self.text=QTextEdit(); self.text.setReadOnly(True); mid.addWidget(self.text,2); root.addLayout(mid,1)
+        mid=QHBoxLayout(); self.list=QListWidget(); self.list.currentItemChanged.connect(self.show_candidate); mid.addWidget(self.list,1); self.text=QTextEdit(); self.text.setReadOnly(True); mid.addWidget(self.text,2); root.addLayout(mid,1)
         erow=QHBoxLayout(); self.export=QPushButton('Экспортировать выбранный 9:16'); self.export.clicked.connect(self.export_clip); erow.addWidget(self.export); root.addLayout(erow)
         self.setStyleSheet('QWidget{background:#16151b;color:#eee;font-size:14px} QLineEdit,QTextEdit,QListWidget,QComboBox{background:#23212a;border:1px solid #444;padding:6px} QPushButton{background:#6d4aff;border:0;padding:10px 14px;border-radius:6px} QPushButton:disabled{background:#444}')
     def pick(self):
@@ -109,7 +109,7 @@ class Window(QWidget):
             it=QListWidgetItem(f"{c['score']:>3}/100  {fmt(c['start'])}–{fmt(c['end'])}  {c['title']}"); it.setData(Qt.UserRole,c); self.list.addItem(it)
         if self.list.count(): self.list.setCurrentRow(0)
     def onfail(self,e): self.run.setEnabled(True); self.status.setText('Ошибка'); QMessageBox.critical(self,'Ошибка',e)
-    def show(self,item,*_):
+    def show_candidate(self,item,*_):
         if not item: return
         c=item.data(Qt.UserRole); self.text.setPlainText(f"{c['title']}\n\n{fmt(c['start'])} → {fmt(c['end'])}\nОценка: {c['score']}/100\n\nПочему выбран:\n{c['reason']}\n\nТекст:\n{c['text']}")
     def export_clip(self):
