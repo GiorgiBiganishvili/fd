@@ -1,3 +1,4 @@
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget, QProgressBar, QPushButton
 
 from main import Window
@@ -31,7 +32,7 @@ class StudioWindow(Window):
         logo = QLabel('SC')
         logo.setObjectName('LogoMark')
         logo.setFixedSize(46, 46)
-        logo.setAlignment(0x84)  # AlignCenter
+        logo.setAlignment(Qt.AlignCenter)
         top_lay.addWidget(logo)
 
         text_col = QVBoxLayout()
