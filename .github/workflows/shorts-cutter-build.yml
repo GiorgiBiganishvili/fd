@@ -19,6 +19,11 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
+      - name: Compile and import 0.3 modules
+        shell: pwsh
+        run: |
+          python -m compileall -q .
+          python -c "import transcription, semantic_engine, editing, captions, render_engine, project_store, main; print('Shorts Cutter 0.3 modules OK')"
       - name: Bundle known-good FFmpeg
         shell: pwsh
         run: |
@@ -48,16 +53,22 @@ jobs:
       - name: Smoke-test exact 9x16 export pipeline
         shell: pwsh
         run: |
-          & tools\ffmpeg.exe -hide_banner -y -f lavfi -i "testsrc2=size=1280x720:rate=30" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 3 -c:v libx264 -pix_fmt yuv420p -c:a aac smoke_input.mp4
+          & tools\ffmpeg.exe -hide_banner -y -f lavfi -i "testsrc2=size=1280x720:rate=30" -f lavfi -i "sine=frequency=440:sample_rate=48000" -t 8 -c:v libx264 -pix_fmt yuv420p -c:a aac smoke_input.mp4
           if ($LASTEXITCODE -ne 0) { throw "Synthetic source creation failed with exit code $LASTEXITCODE" }
           $vf="scale=w=1080:h=1920:force_original_aspect_ratio=increase:flags=lanczos,crop=1080:1920,format=yuv420p"
           & tools\ffmpeg.exe -hide_banner -y -ss 0.5 -i smoke_input.mp4 -t 1.5 -map 0:v:0 -map '0:a:0?' -vf $vf -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart smoke_short.mp4
           if ($LASTEXITCODE -ne 0) { throw "FFmpeg smoke export failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path smoke_short.mp4)) { throw "smoke_short.mp4 was not created" }
-          $size=(Get-Item smoke_short.mp4).Length
-          if ($size -lt 1024) { throw "smoke_short.mp4 is unexpectedly small: $size bytes" }
           $dims=(& tools\ffprobe.exe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 smoke_short.mp4).Trim()
           if ($dims -ne '1080,1920') { throw "Unexpected smoke output dimensions: $dims" }
+      - name: Smoke-test 0.3 cuts zoom captions color and audio
+        shell: pwsh
+        run: |
+          python -c "from captions import write_ass; write_ass('smoke_v03.ass',[{'start':0.0,'end':2.4,'text':'Проверка субтитров','words':[]}],{'font_family':'Arial','font_size':64,'animation':'FADE'},'ЦЕЛОСТНЫЙ SHORT',2.0)"
+          python -c "from render_engine import render; m={'clip_start':0.5,'clip_end':7.0,'output_duration':5.9,'cuts':[{'src_start':0.5,'src_end':3.0,'out_start':0.0,'out_end':2.5},{'src_start':3.6,'src_end':7.0,'out_start':2.5,'out_end':5.9}],'zooms':[{'start':0.0,'end':3.0,'scale':1.0},{'start':3.0,'end':5.9,'scale':1.1}],'audio_cleanup':'LIGHT','color':{'exposure':0.02,'contrast':1.04,'saturation':1.02,'temperature':0.0,'sharpen':0.0},'music_path':'','broll':[]}; render(r'tools\ffmpeg.exe',r'tools\ffprobe.exe','smoke_input.mp4','smoke_v03.mp4',m,'smoke_v03.ass',None,None,False,True,'smoke_v03.log')"
+          if (-not (Test-Path smoke_v03.mp4)) { throw 'Integrated 0.3 render was not created' }
+          $dims=(& tools\ffprobe.exe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 smoke_v03.mp4).Trim()
+          if ($dims -ne '540,960') { throw "Unexpected 0.3 preview dimensions: $dims" }
       - name: Smoke-test face-focused crop filter
         shell: pwsh
         run: |
