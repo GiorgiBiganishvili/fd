@@ -20,7 +20,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p release
-          gh api repos/${{ github.repository }}/actions/artifacts/11612563679/zip > artifact.zip
+          gh api repos/${{ github.repository }}/actions/artifacts/11615559887/zip > artifact.zip
           unzip -q artifact.zip -d release
           find release -maxdepth 3 -type f -print
           test -f release/ShortsCutterSetup.exe
@@ -29,11 +29,11 @@ jobs:
       - name: Publish public GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: shorts-cutter-beta-face-focus
+          TAG: shorts-cutter-0.3-beta
         run: |
           if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "Release exists; replacing assets"
           else
-            gh release create "$TAG" --repo "${{ github.repository }}" --target "shorts-cutter-build" --title "Shorts Cutter Beta 0.2 — face focus" --notes "Adds reference-photo face matching, target-person portrait crop, and beta filtering of candidate Shorts toward the selected speaker. Includes OpenCV YuNet/SFace models and tested 9:16 export pipeline."
+            gh release create "$TAG" --repo "${{ github.repository }}" --target "shorts-cutter-build" --title "Shorts Cutter 0.3 Beta — complete short workflow" --notes "Adds holistic one-idea Short selection with context titles, editable transcript, speech cleanup, face-focused 9:16 crop, auto zooms, subtitle generation/import, custom TTF/OTF fonts, B-roll overlays, background music with ducking, basic color/audio processing, proxy preview, clean export, finished export, and subtitle/edit asset export. Windows build smoke-tests integrated cuts + zooms + captions + color + audio, face crop and Cyrillic paths."
           fi
           gh release upload "$TAG" release/ShortsCutterSetup.exe release/SHA256SUMS.txt --repo "${{ github.repository }}" --clobber
