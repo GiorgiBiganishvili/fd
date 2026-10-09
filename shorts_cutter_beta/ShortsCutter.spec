@@ -2,10 +2,10 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 from pathlib import Path
 root=Path(SPECPATH)
 hidden=[]; datas=[]; binaries=[]
-for pkg in ['faster_whisper','ctranslate2','av','tokenizers','huggingface_hub','openai','PySide6','cv2','numpy']:
+for pkg in ['faster_whisper','ctranslate2','av','tokenizers','huggingface_hub','openai','PySide6','cv2','numpy','fontTools']:
     try: hidden += collect_submodules(pkg)
     except Exception: pass
-for pkg in ['faster_whisper','cv2']:
+for pkg in ['faster_whisper','cv2','fontTools']:
     try: datas += collect_data_files(pkg)
     except Exception: pass
 for pkg in ['ctranslate2','av','cv2']:
