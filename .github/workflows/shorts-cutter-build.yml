@@ -19,11 +19,17 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
-      - name: Compile and import 0.3 modules
+      - name: Compile and import 0.3.1 modules
         shell: pwsh
         run: |
           python -m compileall -q .
-          python -c "import transcription, semantic_engine, editing, captions, render_engine, project_store, main; print('Shorts Cutter 0.3 modules OK')"
+          python -c "import transcription, semantic_engine, editing, captions, render_engine, project_store, main, ui_theme, ui_shell, launcher; print('Shorts Cutter 0.3.1 modules OK')"
+      - name: Smoke-test polished UI shell
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from PySide6.QtWidgets import QApplication; from ui_theme import apply_app_theme; from ui_shell import StudioWindow; app=QApplication([]); apply_app_theme(app); w=StudioWindow(); assert w.tabs.count()==4; assert w.windowTitle()=='Shorts Cutter 0.3.1 Beta'; print('Polished UI shell OK')"
       - name: Bundle known-good FFmpeg
         shell: pwsh
         run: |
