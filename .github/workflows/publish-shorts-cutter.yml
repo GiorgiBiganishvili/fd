@@ -1,0 +1,39 @@
+name: Publish Shorts Cutter Release
+
+on:
+  push:
+    branches: [ shorts-cutter-build ]
+    paths:
+      - '.github/workflows/publish-shorts-cutter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download previously built Windows artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p release
+          gh api repos/${{ github.repository }}/actions/artifacts/11575975510/zip > artifact.zip
+          unzip -q artifact.zip -d release
+          find release -maxdepth 3 -type f -print
+          test -f release/ShortsCutterSetup.exe
+          test -f release/SHA256SUMS.txt
+
+      - name: Publish public GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: shorts-cutter-beta-export-fix
+        run: |
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release exists; replacing assets"
+          else
+            gh release create "$TAG" --repo "${{ github.repository }}" --target "shorts-cutter-build" --title "Shorts Cutter Beta — export fix" --notes "Windows installer with fixed FFmpeg export pipeline and Cyrillic-path smoke test."
+          fi
+          gh release upload "$TAG" release/ShortsCutterSetup.exe release/SHA256SUMS.txt --repo "${{ github.repository }}" --clobber
