@@ -33,17 +33,18 @@ jobs:
           Copy-Item $fp tools\ffprobe.exe
           & tools\ffmpeg.exe -version
           if ($LASTEXITCODE -ne 0) { throw 'Bundled BtbN ffmpeg.exe did not start' }
-      - name: Patch export filter to stable chain
+      - name: Bundle face recognition models
         shell: pwsh
         run: |
-          $path='main.py'
-          $c=Get-Content $path -Raw
-          $c=$c.Replace("                    'hqdn3d=1.2:1.2:6:6,'`r`n",'')
-          $c=$c.Replace("                    'unsharp=5:5:0.35:5:5:0,'`r`n",'')
-          $c=$c.Replace("                    'hqdn3d=1.2:1.2:6:6,'`n",'')
-          $c=$c.Replace("                    'unsharp=5:5:0.35:5:5:0,'`n",'')
-          Set-Content $path $c -Encoding utf8
-          if ((Get-Content $path -Raw) -match 'hqdn3d|unsharp') { throw 'Unstable FFmpeg enhancement filters are still present in main.py' }
+          New-Item -ItemType Directory -Force models | Out-Null
+          Invoke-WebRequest -Uri 'https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_detection_yunet/face_detection_yunet_2023mar_int8.onnx' -OutFile 'models\face_detection_yunet_2023mar_int8.onnx'
+          Invoke-WebRequest -Uri 'https://huggingface.co/opencv/opencv_zoo/resolve/main/models/face_recognition_sface/face_recognition_sface_2021dec_int8.onnx' -OutFile 'models\face_recognition_sface_2021dec_int8.onnx'
+          if ((Get-Item 'models\face_detection_yunet_2023mar_int8.onnx').Length -lt 50000) { throw 'YuNet model download is invalid' }
+          if ((Get-Item 'models\face_recognition_sface_2021dec_int8.onnx').Length -lt 5000000) { throw 'SFace model download is invalid' }
+      - name: Smoke-test OpenCV face runtime
+        shell: pwsh
+        run: |
+          python -c "import cv2; d=cv2.FaceDetectorYN.create(r'models\face_detection_yunet_2023mar_int8.onnx','',(320,320),0.72,0.3,5000); r=cv2.FaceRecognizerSF.create(r'models\face_recognition_sface_2021dec_int8.onnx',''); print('OpenCV face runtime OK')"
       - name: Smoke-test exact 9x16 export pipeline
         shell: pwsh
         run: |
@@ -57,6 +58,14 @@ jobs:
           if ($size -lt 1024) { throw "smoke_short.mp4 is unexpectedly small: $size bytes" }
           $dims=(& tools\ffprobe.exe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 smoke_short.mp4).Trim()
           if ($dims -ne '1080,1920') { throw "Unexpected smoke output dimensions: $dims" }
+      - name: Smoke-test face-focused crop filter
+        shell: pwsh
+        run: |
+          $vf="crop=404:718:320:0,scale=1080:1920:flags=lanczos,format=yuv420p"
+          & tools\ffmpeg.exe -hide_banner -y -ss 0.5 -i smoke_input.mp4 -t 1.0 -map 0:v:0 -map '0:a:0?' -vf $vf -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart smoke_face_short.mp4
+          if ($LASTEXITCODE -ne 0) { throw "Face-focused crop smoke test failed with exit code $LASTEXITCODE" }
+          $dims=(& tools\ffprobe.exe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 smoke_face_short.mp4).Trim()
+          if ($dims -ne '1080,1920') { throw "Unexpected face-focused output dimensions: $dims" }
       - name: Smoke-test Cyrillic paths
         shell: pwsh
         run: |
