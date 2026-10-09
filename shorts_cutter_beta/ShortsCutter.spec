@@ -17,7 +17,9 @@ for name in ['ffmpeg.exe','ffprobe.exe']:
 for name in ['face_detection_yunet_2023mar_int8.onnx','face_recognition_sface_2021dec_int8.onnx']:
     p=root/'models'/name
     if p.exists(): datas.append((str(p),'models'))
-a=Analysis([str(root/'main.py')],pathex=[str(root)],binaries=binaries,datas=datas,hiddenimports=hidden,hookspath=[],runtime_hooks=[],excludes=[],noarchive=False)
+icon_asset=root/'assets'/'shorts_cutter.svg'
+if icon_asset.exists(): datas.append((str(icon_asset),'assets'))
+a=Analysis([str(root/'launcher.py')],pathex=[str(root)],binaries=binaries,datas=datas,hiddenimports=hidden,hookspath=[],runtime_hooks=[],excludes=[],noarchive=False)
 pyz=PYZ(a.pure)
 exe=EXE(pyz,a.scripts,[],exclude_binaries=True,name='ShortsCutter',debug=False,bootloader_ignore_signals=False,strip=False,upx=False,console=False)
 coll=COLLECT(exe,a.binaries,a.datas,strip=False,upx=False,name='ShortsCutter')
