@@ -1,5 +1,5 @@
 #define MyAppName "Shorts Cutter Beta"
-#define MyAppVersion "0.2.0-beta"
+#define MyAppVersion "0.3.0-beta"
 #define MyAppExeName "ShortsCutter.exe"
 [Setup]
 AppId={{6A87EF41-0B17-4D0D-9D21-22C448F6EF20}
