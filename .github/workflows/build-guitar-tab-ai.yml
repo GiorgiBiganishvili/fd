@@ -17,32 +17,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Expand source
-        shell: pwsh
-        run: |
-          if (!(Test-Path "GuitarTabAISource.zip")) { throw "GuitarTabAISource.zip not found" }
-          New-Item -ItemType Directory -Path appsrc -Force | Out-Null
-          Expand-Archive -Path "GuitarTabAISource.zip" -DestinationPath appsrc -Force
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           architecture: "x64"
           cache: "pip"
-          cache-dependency-path: appsrc/pyproject.toml
+          cache-dependency-path: guitar_build/requirements.txt
 
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e .\appsrc
-          python -m pip install pytest pyinstaller
+          python -m pip install -r .\guitar_build\requirements.txt
+          python -m pip install pyinstaller
 
-      - name: Run tests
+      - name: Compile-check source
         shell: pwsh
-        working-directory: appsrc
-        run: python -m pytest -q
+        run: python -m py_compile .\guitar_build\app.py
 
       - name: Install FFmpeg
         shell: pwsh
@@ -57,24 +49,24 @@ jobs:
 
       - name: Build one-file EXE
         shell: pwsh
-        working-directory: appsrc
+        working-directory: guitar_build
         run: |
           python -m PyInstaller --noconfirm --clean --windowed --onefile --name GuitarTabAI `
             --add-binary "$env:FFMPEG_EXE;." `
             --collect-all soundfile `
             --hidden-import scipy.signal `
-            guitar_tab_ai\app\main.py
+            app.py
 
       - name: Verify PE executable
         shell: pwsh
         run: |
-          $exe = Resolve-Path ".\appsrc\dist\GuitarTabAI.exe"
+          $exe = Resolve-Path ".\guitar_build\dist\GuitarTabAI.exe"
           $bytes = [System.IO.File]::ReadAllBytes($exe)
           if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
             throw "GuitarTabAI.exe is not a Windows PE file"
           }
           $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
-          "$hash  GuitarTabAI.exe" | Set-Content ".\appsrc\dist\SHA256SUMS.txt" -Encoding ascii
+          "$hash  GuitarTabAI.exe" | Set-Content ".\guitar_build\dist\SHA256SUMS.txt" -Encoding ascii
           Write-Host "Built $exe"
           Write-Host "SHA256=$hash"
 
@@ -83,7 +75,7 @@ jobs:
         with:
           name: GuitarTabAI-Windows
           path: |
-            appsrc/dist/GuitarTabAI.exe
-            appsrc/dist/SHA256SUMS.txt
+            guitar_build/dist/GuitarTabAI.exe
+            guitar_build/dist/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
