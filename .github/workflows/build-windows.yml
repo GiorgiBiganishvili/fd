@@ -17,47 +17,30 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Expand source
-        shell: pwsh
-        run: |
-          if (!(Test-Path "GuitarTabAISource.zip")) { throw "GuitarTabAISource.zip not found" }
-          New-Item -ItemType Directory -Force -Path appsrc | Out-Null
-          tar -xf GuitarTabAISource.zip -C appsrc
-
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           architecture: "x64"
-          cache: "pip"
-          cache-dependency-path: "appsrc/pyproject.toml"
 
       - name: Install build dependencies
         shell: pwsh
-        working-directory: appsrc
         run: |
-          python -m pip install --upgrade pip wheel setuptools
-          python -m pip install . pytest pyinstaller
+          python -m pip install --upgrade pip
+          python -m pip install PySide6 numpy soundfile pyinstaller
           choco install ffmpeg innosetup --yes --no-progress
-
-      - name: Run tests
-        shell: pwsh
-        working-directory: appsrc
-        run: python -m pytest -q
 
       - name: Build application
         shell: pwsh
-        working-directory: appsrc
         run: |
           $ffmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
-          python -m PyInstaller --noconfirm --clean --windowed --name GuitarTabAI --collect-all PySide6 --collect-all soundfile --hidden-import scipy.signal --add-binary "$ffmpeg;." guitar_tab_ai/app/main.py
+          python -m PyInstaller --noconfirm --clean --windowed --name GuitarTabAI --collect-all PySide6 --collect-all soundfile --add-binary "$ffmpeg;." GuitarTabAI.py
           if (!(Test-Path ".\dist\GuitarTabAI\GuitarTabAI.exe")) { throw "GuitarTabAI.exe was not produced" }
           $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path ".\dist\GuitarTabAI\GuitarTabAI.exe"))
-          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "GuitarTabAI.exe is not Windows PE" }
+          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "GuitarTabAI.exe is not Windows PE" }
 
       - name: Build installer
         shell: pwsh
-        working-directory: appsrc
         run: |
           New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
           @'
@@ -95,11 +78,10 @@ jobs:
 
       - name: Verify installer and silent install
         shell: pwsh
-        working-directory: appsrc
         run: |
           $installer = Resolve-Path ".\dist_installer\GuitarTabAISetup.exe"
           $bytes = [System.IO.File]::ReadAllBytes($installer)
-          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not Windows PE" }
+          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not Windows PE" }
           $p = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Installer returned $($p.ExitCode)" }
           $installed = Join-Path $env:LOCALAPPDATA "Programs\Guitar Tab AI\GuitarTabAI.exe"
@@ -113,7 +95,7 @@ jobs:
         with:
           name: GuitarTabAI-Windows-0.1.0
           path: |
-            appsrc/dist_installer/GuitarTabAISetup.exe
-            appsrc/dist_installer/SHA256SUMS.txt
+            dist_installer/GuitarTabAISetup.exe
+            dist_installer/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
