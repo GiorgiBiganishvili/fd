@@ -22,7 +22,7 @@ jobs:
         run: |
           if (!(Test-Path "GuitarTabAISource.zip")) { throw "GuitarTabAISource.zip not found" }
           New-Item -ItemType Directory -Force -Path appsrc | Out-Null
-          Expand-Archive -Path "GuitarTabAISource.zip" -DestinationPath "appsrc" -Force
+          tar -xf GuitarTabAISource.zip -C appsrc
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
