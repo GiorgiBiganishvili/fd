@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import re
 from typing import Iterator, Protocol
 
 import cv2
@@ -9,7 +10,8 @@ import numpy as np
 import pytesseract
 
 from guitar_tab_ai.core.config import AppConfig
-from guitar_tab_ai.core.events import Evidence, Position
+from guitar_tab_ai.core.events import Evidence, Position, Technique
+from guitar_tab_ai.guitar.model import NATURAL_HARMONICS
 from guitar_tab_ai.video.analyzer import Frame
 
 
@@ -19,11 +21,11 @@ class OCRBackend(Protocol):
 
 class TesseractBackend:
     def digits(self, image: np.ndarray) -> list[tuple[str, float, tuple[int, int, int, int]]]:
-        data = pytesseract.image_to_data(image, config="--psm 11 -c tessedit_char_whitelist=0123456789",
+        data = pytesseract.image_to_data(image, config="--psm 11 -c 'tessedit_char_whitelist=0123456789<>'",
                                          output_type=pytesseract.Output.DICT, timeout=12)
         return [(text.strip(), max(0, min(1, float(data['conf'][i])/100)),
                  (data['left'][i], data['top'][i], data['width'][i], data['height'][i]))
-                for i, text in enumerate(data['text']) if text.strip().isdigit()]
+                for i, text in enumerate(data['text']) if re.fullmatch(r"\d+|<\d+>", text.strip())]
 
 
 class TabDetector:
@@ -90,7 +92,12 @@ class TabOCR:
                                              cv2.getStructuringElement(cv2.MORPH_RECT, (90, 1)))
                     cleaned = cv2.bitwise_or(binary, lines)
                     for text, confidence, (left, top, width, height) in self.backend.digits(cleaned):
-                        fret = int(text)
+                        harmonic = bool(re.fullmatch(r"<\d+>", text))
+                        if not harmonic and not text.isdigit():
+                            continue
+                        fret = int(text.strip("<>"))
+                        if harmonic and fret not in NATURAL_HARMONICS:
+                            continue
                         if fret > self.max_fret or confidence < 0.35:
                             continue
                         center = (top+height/2)/3
@@ -108,6 +115,7 @@ class TabOCR:
                                 continue
                         result.evidence.append(Evidence(time=frame.time, position=Position(string=string,
                             fret=fret), confidence=min(0.9, confidence), source="ocr",
+                            technique=Technique.HARMONIC if harmonic else None,
                             synchronized=highlighted))
                 previous_active = active
         except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError, RuntimeError) as exc:

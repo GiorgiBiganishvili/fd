@@ -131,6 +131,7 @@ class HandPositionEstimator:
 class VideoResult:
     evidence: list[Evidence] = field(default_factory=list)
     visibility: float = 0
+    tracking_active: bool = False
     warnings: list[str] = field(default_factory=list)
 
 
@@ -156,6 +157,7 @@ class VideoAnalyzer:
             result.warnings.append("Гриф не откалиброван. Укажите четыре угла для привязки пальцев к ладам.")
         if tracker is None:
             result.warnings.append("Анализ пальцев не активен: нужен extra hands и локальная модель MediaPipe.")
+        result.tracking_active = tracker is not None and self.config.neck_roi is not None
         grid = self.frets.grid(self.config.neck_start_fret, self.config.neck_end_fret)
         string_rows: list[float] | None = None
         transform = None

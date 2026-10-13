@@ -98,6 +98,7 @@ class Evidence(Record):
     position: Position
     confidence: float = Field(ge=0, le=1)
     source: str
+    technique: Technique | None = None
     synchronized: bool = True
     hand_center_fret: float | None = None
 

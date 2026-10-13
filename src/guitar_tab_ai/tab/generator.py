@@ -3,11 +3,7 @@ from __future__ import annotations
 
 from guitar_tab_ai.core.events import NoteEvent
 from guitar_tab_ai.guitar.model import GuitarModel
-
-SYMBOLS = {"hammer_on": "h", "pull_off": "p", "slide_up": "/", "slide_down": "\\",
-           "bend": "b", "bend_release": "r", "vibrato": "~", "palm_mute": "PM",
-           "dead_note": "x", "harmonic": "<>", "artificial_harmonic": "AH", "tap": "t",
-           "let_ring": "LR"}
+from guitar_tab_ai.tab.notation import fret_label
 
 
 def ascii_tab(notes: list[NoteEvent], guitar: GuitarModel, seconds_per_cell: float = 0.125,
@@ -25,7 +21,7 @@ def ascii_tab(notes: list[NoteEvent], guitar: GuitarModel, seconds_per_cell: flo
         if n.string is None:
             output.append(f"* {n.start:.3f}s {n.pitch}: no playable position")
             continue
-        text = str(n.fret) + SYMBOLS.get(n.technique, "") + ("?" if n.uncertain else "")
+        text = fret_label(n) + ("?" if n.uncertain else "")
         cells.setdefault((n.string, cell), []).append(text)
     for beginning in range(0, last_cell+1, cells_per_line):
         width = min(cells_per_line, last_cell-beginning+1)

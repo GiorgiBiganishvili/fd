@@ -8,6 +8,7 @@ from pathlib import Path
 import pretty_midi
 
 from guitar_tab_ai.core.project import Project
+from guitar_tab_ai.core.events import Technique
 from guitar_tab_ai.tab.generator import ascii_tab
 
 
@@ -82,7 +83,13 @@ def export_musicxml(project: Project, path: Path) -> None:
             length = max(1, round(n.end*scale)-start)
             ET.SubElement(note, "duration").text = str(length)
             ET.SubElement(note, "voice").text = str(string)
+            if n.technique == Technique.HARMONIC:
+                ET.SubElement(note, "notehead").text = "diamond"
             technical = ET.SubElement(ET.SubElement(note, "notations"), "technical")
+            if n.technique == Technique.HARMONIC:
+                harmonic = ET.SubElement(technical, "harmonic")
+                ET.SubElement(harmonic, "natural")
+                ET.SubElement(harmonic, "sounding-pitch")
             ET.SubElement(technical, "string").text = str(string)
             ET.SubElement(technical, "fret").text = str(n.fret)
             cursor = start+length

@@ -41,7 +41,7 @@ def analyze(project: Project, cancel: threading.Event, progress: Progress,
             result.waveform = waveform(wav)
         backend = resolve_backend(config.audio_backend)
         low = min(result.guitar.open_strings)+result.guitar.capo
-        high = max(result.guitar.open_strings)+result.guitar.frets
+        high = max(result.guitar.open_strings)+max(result.guitar.frets, result.guitar.capo+24)
         audio_cache = cache/f"notes-v2-{backend}-{low}-{high}-{start:.6f}-{end:.6f}.json"
         if audio_cache.exists():
             audio = AudioResult.model_validate_json(audio_cache.read_text("utf-8"))
@@ -99,6 +99,7 @@ def analyze(project: Project, cancel: threading.Event, progress: Progress,
         "backend": audio.backend, "notes": len(result.notes), "filtered_candidates": filtered_count,
         "low_confidence": sum(n.uncertain for n in result.notes), "tab_overlay": ocr.detected,
         "ocr_symbols": ocr.symbols, "video_visibility": video.visibility,
+        "video_tracking_active": video.tracking_active,
         "audio_quality": audio.quality,
         "mode": mode,
     }

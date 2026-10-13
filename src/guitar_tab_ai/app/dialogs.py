@@ -26,7 +26,7 @@ class NoteDialog(QDialog):
         self.string = QSpinBox()
         self.string.setRange(1, guitar.strings)
         initial = (Position(string=note.string, fret=note.fret) if note.string is not None
-                   else next(iter(guitar.candidates(note.midi)), None))
+                   else next(iter(guitar.candidates(note.midi, note.technique)), None))
         self.string.setValue(initial.string if initial else 1)
         self.fret = QSpinBox()
         self.fret.setRange(0, guitar.frets-guitar.capo)
@@ -40,11 +40,11 @@ class NoteDialog(QDialog):
         self.technique = QComboBox()
         self.technique.addItem("Без обозначения", None)
         for t in Technique:
-            self.technique.addItem(t.value, t.value)
+            self.technique.addItem("Натуральный флажолет <лад>" if t == Technique.HARMONIC else t.value, t.value)
         if note.technique:
             self.technique.setCurrentIndex(self.technique.findData(note.technique.value))
         self.alternatives = QComboBox()
-        for p in guitar.candidates(note.midi):
+        for p in guitar.candidates(note.midi, note.technique):
             self.alternatives.addItem(f"Струна {p.string}, лад {p.fret}", p)
         self.alternatives.activated.connect(self.choose_position)
         for label, widget in [("Начало, с", self.start), ("Конец, с", self.end), ("Струна", self.string),
@@ -55,6 +55,7 @@ class NoteDialog(QDialog):
         self.string.valueChanged.connect(self.update_pitch)
         self.fret.valueChanged.connect(self.update_pitch)
         self.pitch.valueChanged.connect(self.update_positions)
+        self.technique.currentIndexChanged.connect(self.technique_changed)
         label = QLabel(f"Исходная уверенность: audio {note.confidence.audio:.0%}, "
                        f"video {note.confidence.video:.0%}, OCR {note.confidence.ocr:.0%}\n"
                        "Ручное исправление сохраняется при повторном анализе.")
@@ -75,13 +76,25 @@ class NoteDialog(QDialog):
             self.update_pitch()
 
     def update_pitch(self):
+        try:
+            midi = self.guitar.midi_at(Position(string=self.string.value(), fret=self.fret.value()),
+                                      self.technique.currentData())
+        except ValueError as exc:
+            self.fret.setToolTip(str(exc))
+            return
         self.pitch.blockSignals(True)
-        self.pitch.setValue(self.guitar.midi_at(Position(string=self.string.value(), fret=self.fret.value())))
+        self.pitch.setValue(midi)
         self.pitch.blockSignals(False)
+
+    def technique_changed(self):
+        self.update_pitch()
+        self.alternatives.clear()
+        for p in self.guitar.candidates(self.pitch.value(), self.technique.currentData()):
+            self.alternatives.addItem(f"Струна {p.string}, лад {p.fret}", p)
 
     def update_positions(self):
         self.alternatives.clear()
-        for p in self.guitar.candidates(self.pitch.value()):
+        for p in self.guitar.candidates(self.pitch.value(), self.technique.currentData()):
             self.alternatives.addItem(f"Струна {p.string}, лад {p.fret}", p)
         if self.alternatives.count():
             self.choose_position(0)
@@ -90,7 +103,7 @@ class NoteDialog(QDialog):
         try:
             values = self.note.model_dump()
             position = Position(string=self.string.value(), fret=self.fret.value())
-            if self.pitch.value() != self.guitar.midi_at(position):
+            if self.pitch.value() != self.guitar.midi_at(position, self.technique.currentData()):
                 raise ValueError("Выбранная нота не соответствует струне и ладу")
             confidence = self.note.confidence.model_copy(deep=True)
             values.update(start=self.start.value(), end=self.end.value(), string=position.string,

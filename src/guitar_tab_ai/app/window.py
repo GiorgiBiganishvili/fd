@@ -279,9 +279,11 @@ class MainWindow(QMainWindow):
         self.timeline.position(self.player.position()/1000)
         summary = project.analysis_summary
         tempo = f"{project.rhythm.tempo:.1f} BPM (оценка)" if project.rhythm.tempo else "не определён"
+        tracking = "оценка по калибровке" if summary.get("video_tracking_active") else "НЕ АКТИВНО"
         self.summary.setText(f"Строй: {project.guitar.tuning_name}; капо: {project.guitar.capo}\n"
                              f"Темп: {tempo}\nНоты: {len(project.notes)}; с ?: {sum(n.uncertain for n in project.notes)}\n"
                              f"TAB на видео: {'да' if summary.get('tab_overlay') else 'не подтверждена'}\n"
+                             f"Определение ладов по пальцам: {tracking}\n"
                              f"Режим: {summary.get('mode', 'не анализировалось')}")
         self.warnings.setPlainText('\n'.join(project.warnings))
         if self.selected_id in self.timeline.items_by_id:
@@ -483,7 +485,7 @@ class MainWindow(QMainWindow):
                 p = Position(string=string, fret=n.fret or 0)
                 values = n.model_dump()
                 values.update(start=start, end=start+(n.end-n.start), string=string, fret=p.fret,
-                              midi=after.guitar.midi_at(p), manual_override=True, uncertain=False,
+                              midi=after.guitar.midi_at(p, n.technique), manual_override=True, uncertain=False,
                               sources=sorted(set(n.sources+["manual"])))
                 after.notes[i] = NoteEvent.model_validate(values)
         after.notes.sort(key=lambda n: (n.start, n.midi))
@@ -552,7 +554,7 @@ class MainWindow(QMainWindow):
             pending.settings, pending.guitar = config, guitar
             for n in pending.notes:
                 if n.manual_override and n.string is not None:
-                    n.midi = guitar.midi_at(Position(string=n.string, fret=n.fret))
+                    n.midi = guitar.midi_at(Position(string=n.string, fret=n.fret), n.technique)
             config.save(self.root/"config.yaml")
             self.config = config
             interval = (self.range_a.value(), self.range_b.value()) if selection else None

@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, 
 
 from guitar_tab_ai.core.events import NoteEvent
 from guitar_tab_ai.core.project import Project
+from guitar_tab_ai.tab.notation import fret_label
 
 
 class NoteItem(QGraphicsRectItem):
@@ -28,8 +29,8 @@ class NoteItem(QGraphicsRectItem):
         super().paint(painter, option, widget)
         painter.setPen(QColor("#e9b65c" if self.note.uncertain else "#eef4fa"))
         painter.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
-        text = str(self.note.fret) if self.note.fret is not None else "*"
-        if self.rect().width() < 20:
+        text = fret_label(self.note)
+        if self.rect().width() < painter.fontMetrics().horizontalAdvance(text)+3:
             text = "·"  # Zoom out: show an onset instead of overlapping digits.
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
         if self.isSelected():
@@ -100,14 +101,15 @@ class TabTimeline(QGraphicsView):
         for string in range(1, self.strings+1):
             notes = sorted((n for n in project.notes if n.string == string), key=lambda n: n.start)
             for i, note in enumerate(notes):
-                gap = (notes[i+1].start-note.start)*self.scale if i+1 < len(notes) else 28
-                item = NoteItem(note, self, max(3, min(28, gap-3)))
+                label_width = max(28, len(fret_label(note))*12)
+                gap = (notes[i+1].start-note.start)*self.scale if i+1 < len(notes) else label_width+3
+                item = NoteItem(note, self, max(3, min(label_width, gap-3)))
                 self.scene().addItem(item)
                 self.items_by_id[note.id] = item
                 x = self.origin+note.start*self.scale
                 end_x = self.origin+note.end*self.scale
-                if end_x > x+28:
-                    tail = self.scene().addLine(x+28, 45+string*32, end_x, 45+string*32,
+                if end_x > x+label_width:
+                    tail = self.scene().addLine(x+label_width, 45+string*32, end_x, 45+string*32,
                                                QPen(QColor("#3d6371"), 2))
                     tail.setZValue(-1)
         missing = sum(n.string is None for n in project.notes)

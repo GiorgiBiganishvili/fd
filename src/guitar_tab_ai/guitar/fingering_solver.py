@@ -34,7 +34,13 @@ class FingeringSolver:
         beam = [State(0, {}, None, None, None)]
         for note in ordered:
             nearby = index.around(note.start)
-            candidates = self.guitar.candidates(note.midi)
+            candidates = self.guitar.candidates(note.midi, note.technique)
+            explicit = [e for e in nearby if e.synchronized and e.confidence >= 0.8
+                        and abs(e.time-note.start) < 0.15 and e.technique == note.technique
+                        and self.guitar.midi_at(e.position, e.technique) == note.midi]
+            if explicit:
+                best = max(explicit, key=lambda e: e.confidence)
+                candidates = [best.position]
             if note.manual_override and note.string is not None:
                 candidates = [Position(string=note.string, fret=note.fret)]
             next_beam: list[State] = []
@@ -74,7 +80,7 @@ class FingeringSolver:
             best = best.parent
         choices.reverse()
         for note, position in zip(ordered, choices):
-            note.alternatives = self.guitar.candidates(note.midi)
+            note.alternatives = self.guitar.candidates(note.midi, note.technique)
             if position:
                 # Assign via revalidation to keep string/fret invariant atomic.
                 values = note.model_dump()
@@ -83,7 +89,8 @@ class FingeringSolver:
                 note.__dict__.update(replacement.__dict__)
                 ambiguity = len(note.alternatives)
                 matching = [e for e in index.around(note.start) if e.synchronized
-                            and e.position == position]
+                            and e.position == position
+                            and (e.technique is None or e.technique == note.technique)]
                 confidence = max((e.confidence for e in matching), default=0)
                 note.confidence.fingering = min(0.9, (0.75 if ambiguity == 1 else 0.45) + 0.4*confidence)
             else:
@@ -110,7 +117,7 @@ class FingeringSolver:
                 continue
             if e.hand_center_fret is not None and position.fret:
                 cost += abs(position.fret-e.hand_center_fret)*w.hand_position*e.confidence
-            if self.guitar.midi_at(e.position) != note.midi:
+            if self.guitar.midi_at(e.position, e.technique) != note.midi:
                 continue  # Other chord tones are not evidence against this note.
             weight = w.ocr if e.source == "ocr" else w.video
             distance = min(6, abs(position.fret-e.position.fret) + 2*abs(position.string-e.position.string))

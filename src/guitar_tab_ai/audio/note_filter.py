@@ -6,13 +6,14 @@ notes or claims to separate a guitar from a mixed recording.
 from __future__ import annotations
 
 from guitar_tab_ai.core.config import AppConfig
-from guitar_tab_ai.core.events import NoteEvent
+from guitar_tab_ai.core.events import NoteEvent, Technique
 from guitar_tab_ai.guitar.model import GuitarModel
 
 
 def filter_notes(notes: list[NoteEvent], guitar: GuitarModel, config: AppConfig) -> list[NoteEvent]:
     candidates = sorted((n.model_copy(deep=True) for n in notes
-                         if guitar.candidates(n.midi)
+                         if (guitar.candidates(n.midi, n.technique)
+                             or guitar.candidates(n.midi, Technique.HARMONIC))
                          and n.end-n.start >= 0.10
                          and n.confidence.audio >= config.minimum_audio_confidence),
                         key=lambda n: (n.start, -n.confidence.audio, n.midi))

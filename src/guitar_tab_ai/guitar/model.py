@@ -5,7 +5,11 @@ import re
 
 from pydantic import Field, model_validator
 
-from guitar_tab_ai.core.events import Position, Record
+from guitar_tab_ai.core.events import Position, Record, Technique
+
+# Touch nodes measured relative to the sounding nut/capo. The node number is
+# not the interval: touching 5 gives the fourth partial, 24 semitones higher.
+NATURAL_HARMONICS = {5: 24, 7: 19, 12: 12, 19: 19, 24: 24}
 
 TUNINGS: dict[str, tuple[int, ...]] = {
     "Standard": (40, 45, 50, 55, 59, 64),
@@ -51,12 +55,23 @@ class GuitarModel(Record):
     def strings(self) -> int:
         return len(self.open_strings)
 
-    def midi_at(self, position: Position) -> int:
+    def midi_at(self, position: Position, technique: Technique | None = None) -> int:
         if position.string > self.strings or position.fret > self.frets - self.capo:
             raise ValueError("Position is outside this guitar")
-        return self.open_strings[-position.string] + self.capo + position.fret
+        interval = position.fret
+        if technique == Technique.HARMONIC:
+            if position.fret not in NATURAL_HARMONICS:
+                raise ValueError("Натуральный флажолет: поддерживаются узлы 5, 7, 12, 19 и 24 от капо")
+            interval = NATURAL_HARMONICS[position.fret]
+        return self.open_strings[-position.string] + self.capo + interval
 
-    def candidates(self, midi: int) -> list[Position]:
+    def candidates(self, midi: int, technique: Technique | None = None) -> list[Position]:
+        if technique == Technique.HARMONIC:
+            return [Position(string=s, fret=fret)
+                    for s in range(1, self.strings+1)
+                    for fret, interval in NATURAL_HARMONICS.items()
+                    if fret <= self.frets-self.capo
+                    and self.open_strings[-s]+self.capo+interval == midi]
         return [Position(string=s, fret=midi - self.open_strings[-s] - self.capo)
                 for s in range(1, self.strings + 1)
                 if 0 <= midi - self.open_strings[-s] - self.capo <= self.frets - self.capo]
