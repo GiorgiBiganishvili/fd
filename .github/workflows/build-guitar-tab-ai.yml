@@ -1,0 +1,89 @@
+name: Build GuitarTabAI Windows EXE
+
+on:
+  push:
+    branches: [guitar-tab-ai-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Expand source
+        shell: pwsh
+        run: |
+          if (!(Test-Path "GuitarTabAISource.zip")) { throw "GuitarTabAISource.zip not found" }
+          New-Item -ItemType Directory -Path appsrc -Force | Out-Null
+          Expand-Archive -Path "GuitarTabAISource.zip" -DestinationPath appsrc -Force
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: "x64"
+          cache: "pip"
+          cache-dependency-path: appsrc/pyproject.toml
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .\appsrc
+          python -m pip install pytest pyinstaller
+
+      - name: Run tests
+        shell: pwsh
+        working-directory: appsrc
+        run: python -m pytest -q
+
+      - name: Install FFmpeg
+        shell: pwsh
+        run: |
+          choco install ffmpeg --yes --no-progress
+          $ffmpeg = Get-ChildItem "C:\ProgramData\chocolatey\lib" -Recurse -Filter ffmpeg.exe -ErrorAction SilentlyContinue |
+            Where-Object { $_.Length -gt 1000000 } |
+            Select-Object -First 1
+          if (-not $ffmpeg) { throw "Real ffmpeg.exe not found" }
+          "FFMPEG_EXE=$($ffmpeg.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "Using $($ffmpeg.FullName)"
+
+      - name: Build one-file EXE
+        shell: pwsh
+        working-directory: appsrc
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --onefile --name GuitarTabAI `
+            --add-binary "$env:FFMPEG_EXE;." `
+            --collect-all soundfile `
+            --hidden-import scipy.signal `
+            guitar_tab_ai\app\main.py
+
+      - name: Verify PE executable
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path ".\appsrc\dist\GuitarTabAI.exe"
+          $bytes = [System.IO.File]::ReadAllBytes($exe)
+          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
+            throw "GuitarTabAI.exe is not a Windows PE file"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $exe).Hash.ToLowerInvariant()
+          "$hash  GuitarTabAI.exe" | Set-Content ".\appsrc\dist\SHA256SUMS.txt" -Encoding ascii
+          Write-Host "Built $exe"
+          Write-Host "SHA256=$hash"
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: GuitarTabAI-Windows
+          path: |
+            appsrc/dist/GuitarTabAI.exe
+            appsrc/dist/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
