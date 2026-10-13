@@ -1,4 +1,6 @@
-audio_backend: basic-pitch
+audio_backend: auto
+transcription_profile: polyphonic
+minimum_audio_confidence: 0.45
 frame_sampling_rate: 5
 confidence_threshold: 0.65
 beam_width: 96

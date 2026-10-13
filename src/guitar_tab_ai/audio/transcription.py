@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Callable, Protocol
 
@@ -44,6 +45,9 @@ class SpectralTranscriber:
     Intended for exposed melodies/riffs and simple chords. It is an explicit
     baseline, not an ML model; distortion and backing tracks reduce accuracy.
     """
+    def __init__(self, minimum_midi: int = 28, maximum_midi: int = 100):
+        self.minimum_midi, self.maximum_midi = minimum_midi, maximum_midi
+
     def transcribe(self, path: Path, cancel: threading.Event, progress: Progress) -> AudioResult:
         active: dict[int, dict[str, float | list[float]]] = {}
         notes: list[NoteEvent] = []
@@ -79,8 +83,10 @@ class SpectralTranscriber:
                     spectrum = magnitude[:, column]
                     peak_value = float(spectrum[valid_band].max(initial=0))
                     detected: dict[int, float] = {}
-                    if peak_value >= 0.001:
-                        peaks, _ = find_peaks(spectrum, height=max(0.0008, peak_value * 0.16), distance=3)
+                    band = spectrum[valid_band]
+                    flatness = float(np.exp(np.mean(np.log(band + 1e-12))) / (np.mean(band)+1e-12))
+                    if peak_value >= 0.001 and flatness < 0.18:
+                        peaks, _ = find_peaks(spectrum, height=max(0.0008, peak_value * 0.28), distance=3)
                         fundamental: list[float] = []
                         for index in sorted(peaks, key=lambda p: freq[p]):
                             hz = float(freq[index])
@@ -94,7 +100,7 @@ class SpectralTranscriber:
                                    for base in fundamental):
                                 continue
                             midi = int(round(69 + 12*np.log2(hz/440)))
-                            if not 28 <= midi <= 100:
+                            if not self.minimum_midi <= midi <= self.maximum_midi:
                                 continue
                             fundamental.append(hz)
                             detected[midi] = max(detected.get(midi, 0), float(spectrum[index]))
@@ -131,7 +137,7 @@ class SpectralTranscriber:
     @staticmethod
     def _finish(midi: int, state: dict, notes: list[NoteEvent]) -> None:
         start, end = float(state["start"]), float(state["last"]) + 0.01
-        if end-start < 0.07:
+        if end-start < 0.10:
             return
         confidence = float(np.clip(0.35 + 0.35*np.mean(state["strength"]), 0, 0.7))
         notes.append(NoteEvent(start=start, end=end, midi=midi,
@@ -140,6 +146,9 @@ class SpectralTranscriber:
 
 class BasicPitchTranscriber:
     """Optional polyphonic model. Imports are lazy and model assets stay local."""
+    def __init__(self, minimum_midi: int = 28, maximum_midi: int = 100):
+        self.minimum_midi, self.maximum_midi = minimum_midi, maximum_midi
+
     def transcribe(self, path: Path, cancel: threading.Event, progress: Progress) -> AudioResult:
         try:
             from basic_pitch import FilenameSuffix, build_icassp_2022_model_path
@@ -165,7 +174,10 @@ class BasicPitchTranscriber:
                     samples = audio.read(round(32*audio.samplerate), dtype="float32")
                     chunk = Path(folder)/"chunk.wav"
                     sf.write(chunk, samples, audio.samplerate)
-                    _, _, events = predict(str(chunk), model)
+                    _, _, events = predict(str(chunk), model, onset_threshold=0.6,
+                        frame_threshold=0.35, minimum_note_length=100,
+                        minimum_frequency=440*2**((self.minimum_midi-69)/12),
+                        maximum_frequency=440*2**((self.maximum_midi-69)/12))
                     for begin, finish, midi, amplitude, _ in events:
                         start = float(begin)+offset
                         end = min(duration, float(finish)+offset)
@@ -182,9 +194,16 @@ class BasicPitchTranscriber:
                            warnings=["Confidence модели не является калиброванной вероятностью."])
 
 
-def make_transcriber(name: str) -> AudioTranscriber:
+def resolve_backend(name: str) -> str:
+    if name == "auto":
+        return "basic-pitch" if find_spec("basic_pitch") else "spectral"
+    return name
+
+
+def make_transcriber(name: str, minimum_midi: int = 28, maximum_midi: int = 100) -> AudioTranscriber:
+    name = resolve_backend(name)
     if name == "basic-pitch":
-        return BasicPitchTranscriber()
+        return BasicPitchTranscriber(minimum_midi, maximum_midi)
     if name == "spectral":
-        return SpectralTranscriber()
+        return SpectralTranscriber(minimum_midi, maximum_midi)
     raise ValueError(f"Unknown audio backend: {name}")

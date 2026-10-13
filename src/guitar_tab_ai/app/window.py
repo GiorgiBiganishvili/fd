@@ -91,8 +91,16 @@ class MainWindow(QMainWindow):
         self.frets.setRange(12, 36)
         self.frets.setValue(24)
         self.backend = QComboBox()
+        self.backend.addItem("Автоматически (Basic Pitch)", "auto")
         self.backend.addItem("Спектральный (CPU)", "spectral")
         self.backend.addItem("Basic Pitch (ML extra)", "basic-pitch")
+        self.transcription_profile = QComboBox()
+        self.transcription_profile.addItem("Гитара: аккорды и арпеджио", "polyphonic")
+        self.transcription_profile.addItem("Мелодия: одна нота за раз", "melody")
+        self.audio_threshold = QDoubleSpinBox()
+        self.audio_threshold.setRange(0.1, 0.95)
+        self.audio_threshold.setSingleStep(0.05)
+        self.audio_threshold.setToolTip("Выше — меньше слабых срабатываний; тихие ноты могут пропасть")
         self.preset = QComboBox()
         self.preset.addItems(["Fast", "Balanced", "Maximum accuracy"])
         self.preset.setCurrentText("Balanced")
@@ -105,6 +113,7 @@ class MainWindow(QMainWindow):
         self.hand_model.setToolTip("Локальная модель MediaPipe; ничего не скачивается автоматически")
         for name, widget in [("Строй", self.tuning), ("Custom tuning", self.custom_tuning), ("Капо", self.capo),
                              ("Ладов", self.frets), ("Аудио", self.backend), ("Режим", self.preset),
+                             ("Партия", self.transcription_profile), ("Порог нот", self.audio_threshold),
                              ("Модель рук", self.hand_model)]:
             form.addRow(name, widget)
         form.addRow(self.ocr_enabled)
@@ -114,7 +123,7 @@ class MainWindow(QMainWindow):
         self.analyze_button.clicked.connect(lambda: self.start_analysis(False))
         self.calibrate_button = QPushButton("Указать гриф вручную")
         self.calibrate_button.clicked.connect(self.calibrate)
-        self.review_button = QPushButton("Следующая нота с ?")
+        self.review_button = QPushButton("Проверить сомнительную ноту")
         self.review_button.clicked.connect(self.review_uncertain)
         for button in (self.analyze_button, self.calibrate_button, self.review_button):
             side_layout.addWidget(button)
@@ -179,8 +188,8 @@ class MainWindow(QMainWindow):
         self.reanalyze_button.clicked.connect(lambda: self.start_analysis(True))
         selection.addWidget(self.reanalyze_button)
         self.zoom = QSlider(Qt.Orientation.Horizontal)
-        self.zoom.setRange(30, 300)
-        self.zoom.setValue(110)
+        self.zoom.setRange(60, 800)
+        self.zoom.setValue(180)
         self.zoom.setMaximumWidth(130)
         self.zoom.valueChanged.connect(self.zoom_changed)
         selection.addWidget(QLabel("Масштаб"))
@@ -349,6 +358,8 @@ class MainWindow(QMainWindow):
         self.capo.setValue(g.capo)
         self.frets.setValue(g.frets)
         self.backend.setCurrentIndex(max(0, self.backend.findData(c.audio_backend)))
+        self.transcription_profile.setCurrentIndex(max(0, self.transcription_profile.findData(c.transcription_profile)))
+        self.audio_threshold.setValue(c.minimum_audio_confidence)
         self.hand_model.setText(c.hand_model or "")
         self.ocr_enabled.setChecked(c.ocr_enabled)
         self.video_enabled.setChecked(c.video_enabled)
@@ -513,6 +524,8 @@ class MainWindow(QMainWindow):
     def settings_from_controls(self):
         config = self.project.settings.model_copy(deep=True)
         config.audio_backend = self.backend.currentData()
+        config.transcription_profile = self.transcription_profile.currentData()
+        config.minimum_audio_confidence = self.audio_threshold.value()
         config.frame_sampling_rate = {"Fast": 2, "Balanced": 5, "Maximum accuracy": 12}[self.preset.currentText()]
         config.beam_width = {"Fast": 32, "Balanced": 96, "Maximum accuracy": 256}[self.preset.currentText()]
         config.ocr_enabled = self.ocr_enabled.isChecked()
@@ -563,7 +576,8 @@ class MainWindow(QMainWindow):
         self.timeline.setInteractive(not value)
         for widget in self.edit_buttons + [self.analyze_button, self.reanalyze_button, self.calibrate_button,
             self.review_button, self.tuning, self.custom_tuning, self.capo, self.frets, self.backend,
-            self.preset, self.hand_model, self.ocr_enabled, self.video_enabled]:
+            self.preset, self.hand_model, self.ocr_enabled, self.video_enabled,
+            self.transcription_profile, self.audio_threshold]:
             widget.setEnabled(not value)
         self.menuBar().setEnabled(not value)
         self.cancel_button.setEnabled(value)

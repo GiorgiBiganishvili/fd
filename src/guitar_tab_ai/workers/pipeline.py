@@ -5,7 +5,8 @@ import threading
 from pathlib import Path
 
 from guitar_tab_ai.audio.extractor import cache_key, check_cancel, extract_audio, probe_video, waveform
-from guitar_tab_ai.audio.transcription import Progress, make_transcriber
+from guitar_tab_ai.audio.note_filter import filter_notes
+from guitar_tab_ai.audio.transcription import Progress, make_transcriber, resolve_backend
 from guitar_tab_ai.core.config import data_directory
 from guitar_tab_ai.core.events import AudioResult, group_chords
 from guitar_tab_ai.core.project import Project
@@ -38,11 +39,14 @@ def analyze(project: Project, cancel: threading.Event, progress: Progress,
         wav = extract_audio(path, cache/f"audio-{start:.6f}-{end:.6f}.wav", config, cancel, start, end)
         if selection is None:
             result.waveform = waveform(wav)
-        audio_cache = cache/f"notes-v1-{config.audio_backend}-{start:.6f}-{end:.6f}.json"
+        backend = resolve_backend(config.audio_backend)
+        low = min(result.guitar.open_strings)+result.guitar.capo
+        high = max(result.guitar.open_strings)+result.guitar.frets
+        audio_cache = cache/f"notes-v2-{backend}-{low}-{high}-{start:.6f}-{end:.6f}.json"
         if audio_cache.exists():
             audio = AudioResult.model_validate_json(audio_cache.read_text("utf-8"))
         else:
-            audio = make_transcriber(config.audio_backend).transcribe(wav, cancel,
+            audio = make_transcriber(backend, low, high).transcribe(wav, cancel,
                 lambda fraction, message: progress(0.12+0.48*fraction, message))
             temporary = audio_cache.with_suffix(".tmp")
             temporary.write_text(audio.model_dump_json(), "utf-8")
@@ -52,6 +56,14 @@ def analyze(project: Project, cancel: threading.Event, progress: Progress,
             values.update(start=note.start+start, end=min(end, note.end+start))
             note.__dict__.update(type(note).model_validate(values).__dict__)
         audio.rhythm.beats = [t+start for t in audio.rhythm.beats]
+    raw_count = len(audio.notes)
+    audio.notes = filter_notes(audio.notes, result.guitar, config)
+    filtered_count = raw_count-len(audio.notes)
+    if filtered_count:
+        audio.warnings.append(f"Отфильтровано кандидатов: {filtered_count} (слабые, короткие, "
+                              "дублирующиеся или вне строя).")
+    audio.warnings.append("Запись с вокалом, басом и ударными может давать чужие ноты. "
+                          "Для точной TAB используйте отдельную дорожку гитары.")
     check_cancel(cancel)
     progress(0.62, "Распознавание грифа и рук")
     video = VideoResult()
@@ -84,7 +96,7 @@ def analyze(project: Project, cancel: threading.Event, progress: Progress,
     else:
         mode = "Нет подтверждённых событий"
     result.analysis_summary = {
-        "backend": config.audio_backend, "notes": len(result.notes),
+        "backend": audio.backend, "notes": len(result.notes), "filtered_candidates": filtered_count,
         "low_confidence": sum(n.uncertain for n in result.notes), "tab_overlay": ocr.detected,
         "ocr_symbols": ocr.symbols, "video_visibility": video.visibility,
         "audio_quality": audio.quality,

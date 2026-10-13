@@ -47,3 +47,33 @@ ARCHITECTURE.md are not advertised as implemented.
 The Windows workflow and build scripts are prepared for that platform's checks.
 The reusable cloud install/start configuration was saved as a draft. It has not
 been published, and fresh-task snapshot restoration has not been independently tested.
+
+## TAB readability and candidate filtering correction
+
+The original default spectral mode produced excessive candidates on complex
+audio, and duration rectangles made adjacent fret labels unreadable. Auto mode
+now selects bundled Basic Pitch; spectral mode remains available. Transcribers
+limit detection to the selected tuning/capo/fret range. The spectral baseline
+rejects broadband noise using spectral flatness and requires stronger peaks.
+Before fingering, candidates below the user threshold, under 100 ms, outside
+the guitar range, and overlapping duplicate pitches are excluded. The optional
+melody profile selects one concurrent note; the polyphonic profile retains
+chords. Raw candidates remain cached; the cache version changed so previous
+spectral results cannot silently reappear on reanalysis.
+
+Fret labels sit at attacks on labeled strings, with thin sustain traces.
+Uncertainty uses amber text and tooltips. At low zoom densely spaced attacks
+become dots; zoom restores digits. Unassigned notes remain in the project and
+review controls rather than creating a seventh row of asterisks.
+
+48 tests passed, including actual Basic Pitch inference, synthetic plucked-note
+harmonics plus broadband noise, candidate filtering, chord preservation,
+monophonic selection, GUI editing/playback, and dense-label geometry. These tests
+do not demonstrate accuracy on the user's screenshot recording: its audio and
+reference TAB were not supplied. This correction does not implement source
+separation or guarantee guitar-only output from a full song mix.
+
+The updated Windows EXE (SHA256 `4a926e3c49de9b330807bc9d00f34c9af18b5bfe9caa050136d6d76901817da0`) independently
+analyzed the six-note MP4 using automatic Basic Pitch selection and preserved
+the six expected pitches/open-string fingerings. Its GUI opened the result and
+remained responsive after playback under Wine/Xvfb.

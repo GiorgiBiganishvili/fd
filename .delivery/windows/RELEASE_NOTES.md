@@ -1,3 +1,9 @@
-Windows 10/11 x64 desktop application. Download GuitarTabAI.exe and double-click it. Python, FFmpeg and the Basic Pitch ONNX model are included.
+Обновление отображения и распознавания TAB.
 
-Validated under Wine: GUI startup, test-video playback and transcription of six expected guitar notes. Clean Windows hardware validation is still pending. OCR requires a separately installed Tesseract; hand tracking requires a local MediaPipe model.
+Скачайте GuitarTabAI.exe или GuitarTabAI-Windows.zip из Assets в обычном браузере.
+
+В приложении выберите «Аудио → Автоматически (Basic Pitch)» и нажмите «Анализировать видео». Старый проект сам по себе не пересчитывается. Для одноголосного риффа выберите «Партия → Мелодия: одна нота за раз».
+
+Номера ладов теперь показаны на струнах без перекрывающихся блоков; сомнительные позиции выделены жёлтым. Добавлены фильтр слабых/коротких срабатываний, ограничения по строю и устранение дубликатов. «Порог нот» можно поднять с 0.45 до 0.60 при избытке слабых срабатываний; тихие настоящие ноты также могут пропасть.
+
+Проверено: 48 тестов, реальное распознавание тестового видео упакованным Windows EXE, запуск GUI и воспроизведение под Wine. Проверка на чистой Windows и точность на исходном видео пользователя пока не подтверждены. Модель не отделяет гитару от вокала/баса/ударных в общем миксе.

@@ -47,7 +47,7 @@ def test_basic_pitch_real_inference(melody):
 def test_end_to_end_video_pipeline_export_and_cache(video, tmp_path, monkeypatch):
     monkeypatch.setenv("GTAB_DATA_DIR", str(tmp_path/"data"))
     progress = []
-    project = Project(title="Тест", video_path=str(video), settings=AppConfig(ocr_enabled=False,
+    project = Project(title="Тест", video_path=str(video), settings=AppConfig(audio_backend="spectral", ocr_enabled=False,
                                                                            video_enabled=False))
     result = analyze(project, threading.Event(), lambda fraction, text: progress.append(fraction))
     assert [n.midi for n in result.notes] == [40, 45, 50, 55, 59, 64]

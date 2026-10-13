@@ -31,7 +31,9 @@ class FusionWeights(Record):
 
 
 class AppConfig(Record):
-    audio_backend: str = "spectral"
+    audio_backend: str = "auto"
+    transcription_profile: str = "polyphonic"
+    minimum_audio_confidence: float = Field(0.45, ge=0, le=1)
     frame_sampling_rate: float = Field(5, gt=0, le=30)
     confidence_threshold: float = Field(0.65, ge=0, le=1)
     beam_width: int = Field(96, ge=8, le=512)

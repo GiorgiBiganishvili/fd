@@ -2,7 +2,7 @@ name: Publish ready Windows download
 
 on:
   push:
-    branches: [codex/windows-download-206e6db7]
+    branches: [codex/tab-readability-fix]
 
 permissions:
   contents: write
@@ -19,6 +19,12 @@ jobs:
           set -euo pipefail
           cat .delivery/windows/GuitarTabAI.exe.part-* > GuitarTabAI.exe
           sha256sum --check .delivery/windows/SHA256SUMS.txt
+      - name: Package an alternative ZIP download
+        shell: bash
+        run: |
+          cp docs/TAB_FIX_RU.md TAB_FIX_RU.md
+          cp docs/THIRD_PARTY.md THIRD_PARTY.md
+          zip -q GuitarTabAI-Windows.zip GuitarTabAI.exe TAB_FIX_RU.md THIRD_PARTY.md
       - name: Publish the download
         shell: bash
         env:
@@ -27,11 +33,11 @@ jobs:
           RELEASE_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          tag=guitar-tab-ai-0.1.0-206e6db7
+          tag=guitar-tab-ai-tab-fix-4a926e3c
           if gh release view "$tag" >/dev/null 2>&1; then
             gh release view "$tag" --json assets --jq '.assets[].name' | rg --fixed-strings --line-regexp GuitarTabAI.exe
           else
-            gh release create "$tag" GuitarTabAI.exe .delivery/windows/SHA256SUMS.txt \
-              --target "$RELEASE_COMMIT" --title "Guitar Tab AI 0.1.0 — Windows download" \
+            gh release create "$tag" GuitarTabAI.exe GuitarTabAI-Windows.zip .delivery/windows/SHA256SUMS.txt \
+              --target "$RELEASE_COMMIT" --title "Guitar Tab AI — исправление TAB" \
               --notes-file .delivery/windows/RELEASE_NOTES.md
           fi

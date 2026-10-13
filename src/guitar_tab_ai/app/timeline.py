@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QGraphicsItem, QGraphicsRectItem, QGraphicsScene, QGraphicsView
 
 from guitar_tab_ai.core.events import NoteEvent
@@ -10,13 +10,14 @@ from guitar_tab_ai.core.project import Project
 
 
 class NoteItem(QGraphicsRectItem):
-    def __init__(self, note: NoteEvent, timeline: TabTimeline):
-        super().__init__(0, -10, max(24, (note.end-note.start)*timeline.scale), 23)
+    def __init__(self, note: NoteEvent, timeline: TabTimeline, width: float = 28):
+        super().__init__(0, -11, width, 22)
         self.note, self.timeline = note, timeline
         self.setPos(timeline.origin+note.start*timeline.scale, 45+(note.string or 0)*32)
-        self.base_color = QColor("#bc8431" if note.uncertain else "#377b8f")
+        self.base_color = QColor("#16202d")
         self.setBrush(self.base_color)
-        self.setPen(QPen(QColor("#e1ebef"), 0.5))
+        self.setPen(QPen(Qt.PenStyle.NoPen))
+        self.setZValue(2)
         self.setFlags(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable |
                       QGraphicsItem.GraphicsItemFlag.ItemIsMovable)
         self.setToolTip(f"{note.pitch} · {note.start:.3f}–{note.end:.3f} с\n"
@@ -25,13 +26,15 @@ class NoteItem(QGraphicsRectItem):
 
     def paint(self, painter, option, widget=None):
         super().paint(painter, option, widget)
-        painter.setPen(QColor("white"))
+        painter.setPen(QColor("#e9b65c" if self.note.uncertain else "#eef4fa"))
+        painter.setFont(QFont("Consolas", 11, QFont.Weight.Bold))
         text = str(self.note.fret) if self.note.fret is not None else "*"
-        if self.note.uncertain:
-            text += "?"
-        if self.note.manual_override:
-            text += "✓"
+        if self.rect().width() < 20:
+            text = "·"  # Zoom out: show an onset instead of overlapping digits.
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        if self.isSelected():
+            painter.setPen(QPen(QColor("#68d5bc"), 1))
+            painter.drawRect(self.rect())
 
     def mousePressEvent(self, event):
         self.initial = self.pos()
@@ -66,7 +69,7 @@ class TabTimeline(QGraphicsView):
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setMinimumHeight(300)
         self.setBackgroundBrush(QColor("#16202d"))
-        self.origin, self.scale, self.strings = 65, 110, 6
+        self.origin, self.scale, self.strings = 65, 180, 6
         self.items_by_id: dict[str, NoteItem] = {}
         self.playhead = None
         self.duration = 1
@@ -82,7 +85,9 @@ class TabTimeline(QGraphicsView):
         for s in range(1, self.strings+1):
             y = 45+s*32
             self.scene().addLine(self.origin, y, width, y, QPen(QColor("#536273")))
-            label = self.scene().addText(f"{s}")
+            midi = project.guitar.open_strings[-s]+project.guitar.capo
+            names = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+            label = self.scene().addText(names[midi % 12])
             label.setDefaultTextColor(QColor("#c5d1df"))
             label.setPos(20, y-14)
         tick_interval = max(1, round(100/self.scale))
@@ -92,10 +97,24 @@ class TabTimeline(QGraphicsView):
             label.setDefaultTextColor(QColor("#8d9bae"))
             label.setPos(x, 4)
             self.scene().addLine(x, 32, x, 45+self.strings*32, QPen(QColor("#263749")))
-        for note in project.notes:
-            item = NoteItem(note, self)
-            self.scene().addItem(item)
-            self.items_by_id[note.id] = item
+        for string in range(1, self.strings+1):
+            notes = sorted((n for n in project.notes if n.string == string), key=lambda n: n.start)
+            for i, note in enumerate(notes):
+                gap = (notes[i+1].start-note.start)*self.scale if i+1 < len(notes) else 28
+                item = NoteItem(note, self, max(3, min(28, gap-3)))
+                self.scene().addItem(item)
+                self.items_by_id[note.id] = item
+                x = self.origin+note.start*self.scale
+                end_x = self.origin+note.end*self.scale
+                if end_x > x+28:
+                    tail = self.scene().addLine(x+28, 45+string*32, end_x, 45+string*32,
+                                               QPen(QColor("#3d6371"), 2))
+                    tail.setZValue(-1)
+        missing = sum(n.string is None for n in project.notes)
+        if missing:
+            label = self.scene().addText(f"Без аппликатуры: {missing}. Проверить в списке нот.")
+            label.setDefaultTextColor(QColor("#e9b65c"))
+            label.setPos(self.origin, 36)
         base = 75+self.strings*32
         if project.waveform:
             path = QPainterPath()

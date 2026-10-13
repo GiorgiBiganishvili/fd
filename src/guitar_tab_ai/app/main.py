@@ -31,7 +31,7 @@ def main() -> int:
     parser.add_argument("project", nargs="?", type=Path)
     parser.add_argument("--analyze", type=Path)
     parser.add_argument("--output", type=Path, default=Path("analysis.gtabproject"))
-    parser.add_argument("--backend", choices=["spectral", "basic-pitch"], default="spectral")
+    parser.add_argument("--backend", choices=["auto", "spectral", "basic-pitch"], default="auto")
     parser.add_argument("--audio-only", action="store_true")
     args = parser.parse_args()
     root = data_directory()
