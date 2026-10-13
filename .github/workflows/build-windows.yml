@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           $ffmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
-          python -m PyInstaller --noconfirm --clean --windowed --name GuitarTabAI --collect-all PySide6 --collect-all soundfile --add-binary "$ffmpeg;." GuitarTabAI.py
+          python -m PyInstaller --noconfirm --clean --windowed --name GuitarTabAI --add-binary "$ffmpeg;." GuitarTabAI.py
           if (!(Test-Path ".\dist\GuitarTabAI\GuitarTabAI.exe")) { throw "GuitarTabAI.exe was not produced" }
           $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path ".\dist\GuitarTabAI\GuitarTabAI.exe"))
           if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "GuitarTabAI.exe is not Windows PE" }
@@ -53,8 +53,8 @@ jobs:
           DefaultGroupName=Guitar Tab AI
           OutputDir=dist_installer
           OutputBaseFilename=GuitarTabAISetup
-          Compression=lzma2
-          SolidCompression=yes
+          Compression=zip
+          SolidCompression=no
           WizardStyle=modern
           ArchitecturesAllowed=x64compatible
           ArchitecturesInstallIn64BitMode=x64compatible
