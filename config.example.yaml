@@ -1,0 +1,24 @@
+audio_backend: basic-pitch
+frame_sampling_rate: 5
+confidence_threshold: 0.65
+beam_width: 96
+max_analysis_seconds: 1800
+ocr_enabled: true
+video_enabled: true
+ffmpeg: ffmpeg
+ffprobe: ffprobe
+tesseract: tesseract
+hand_model: null
+neck_roi: null
+neck_start_fret: 0
+neck_end_fret: 12
+ocr_roi: null
+weights:
+  audio: 1.0
+  video: 1.4
+  ocr: 1.8
+  hand_position: 0.35
+  fret_distance: 0.22
+  string_distance: 0.12
+  stretch: 0.65
+  open_string: 0.08

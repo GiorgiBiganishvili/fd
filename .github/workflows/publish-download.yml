@@ -1,0 +1,37 @@
+name: Publish ready Windows download
+
+on:
+  push:
+    branches: [codex/windows-download-206e6db7]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reassemble and verify the tested executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .delivery/windows/GuitarTabAI.exe.part-* > GuitarTabAI.exe
+          sha256sum --check .delivery/windows/SHA256SUMS.txt
+      - name: Publish the download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          tag=guitar-tab-ai-0.1.0-206e6db7
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release view "$tag" --json assets --jq '.assets[].name' | rg --fixed-strings --line-regexp GuitarTabAI.exe
+          else
+            gh release create "$tag" GuitarTabAI.exe .delivery/windows/SHA256SUMS.txt \
+              --target "$RELEASE_COMMIT" --title "Guitar Tab AI 0.1.0 — Windows download" \
+              --notes-file .delivery/windows/RELEASE_NOTES.md
+          fi

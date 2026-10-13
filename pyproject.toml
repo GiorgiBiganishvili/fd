@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=75,<81"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "guitar-tab-ai"
+version = "0.1.0"
+description = "Local video-to-guitar-tab desktop workstation"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "PySide6>=6.8,<6.9",
+  "numpy>=1.26,<2",
+  "scipy>=1.13,<1.16",
+  "librosa>=0.10.2,<0.12",
+  "soundfile>=0.12,<0.14",
+  "opencv-python-headless>=4.10,<4.12",
+  "pretty-midi>=0.2.10,<0.3",
+  "pydantic>=2.10,<3",
+  "PyYAML>=6,<7",
+  "pytesseract>=0.3.13,<0.4",
+]
+
+[project.optional-dependencies]
+ml = [
+  "basic-pitch[onnx]==0.4.0; python_version < '3.12'",
+  "setuptools>=75,<81",
+  # TF 2.15.0 has platform-dependent wheel metadata; use the fixed Linux wheel.
+  "tensorflow==2.15.0.post1; python_version < '3.12' and sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+hands = ["mediapipe>=0.10.20,<0.11"]
+dev = ["pytest>=8.3,<9", "pytest-qt>=4.4,<5", "ruff>=0.11,<0.12"]
+build = ["pyinstaller>=6.11,<7"]
+
+[project.scripts]
+guitar-tab-ai = "guitar_tab_ai.app.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyside6"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.uv]
+# Desktop target and validation host; avoid TF's inconsistent ARM wheel metadata.
+environments = [
+  "sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
