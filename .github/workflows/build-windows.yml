@@ -1,4 +1,4 @@
-name: Build Windows Installer
+name: Build GuitarTabAI Windows
 
 on:
   push:
@@ -17,91 +17,103 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Expand source archive
+      - name: Expand source
         shell: pwsh
         run: |
-          if (!(Test-Path "RussianTranscriberSource.zip")) { throw "RussianTranscriberSource.zip not found" }
-          Expand-Archive -Path "RussianTranscriberSource.zip" -DestinationPath "." -Force
+          if (!(Test-Path "GuitarTabAISource.zip")) { throw "GuitarTabAISource.zip not found" }
+          New-Item -ItemType Directory -Force -Path appsrc | Out-Null
+          Expand-Archive -Path "GuitarTabAISource.zip" -DestinationPath "appsrc" -Force
 
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           architecture: "x64"
           cache: "pip"
+          cache-dependency-path: "appsrc/pyproject.toml"
 
-      - name: Install Inno Setup
+      - name: Install build dependencies
         shell: pwsh
+        working-directory: appsrc
         run: |
-          choco install innosetup --yes --no-progress
-          $iscc = Get-ChildItem "C:\Program Files (x86)\Inno Setup*" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $iscc) { throw "ISCC.exe not found after Inno Setup installation" }
-          "INNO_ISCC=$($iscc.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          python -m pip install --upgrade pip wheel setuptools
+          python -m pip install . pytest pyinstaller
+          choco install ffmpeg innosetup --yes --no-progress
 
-      - name: Build application and installer
+      - name: Run tests
         shell: pwsh
-        run: |
-          Set-ExecutionPolicy -Scope Process Bypass -Force
-          .\scripts\build_windows.ps1
+        working-directory: appsrc
+        run: python -m pytest -q
 
-      - name: Verify installer is Windows PE
+      - name: Build application
         shell: pwsh
+        working-directory: appsrc
         run: |
-          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          $ffmpeg = (Get-Command ffmpeg.exe -ErrorAction Stop).Source
+          python -m PyInstaller --noconfirm --clean --windowed --name GuitarTabAI --collect-all PySide6 --collect-all soundfile --hidden-import scipy.signal --add-binary "$ffmpeg;." guitar_tab_ai/app/main.py
+          if (!(Test-Path ".\dist\GuitarTabAI\GuitarTabAI.exe")) { throw "GuitarTabAI.exe was not produced" }
+          $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path ".\dist\GuitarTabAI\GuitarTabAI.exe"))
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "GuitarTabAI.exe is not Windows PE" }
+
+      - name: Build installer
+        shell: pwsh
+        working-directory: appsrc
+        run: |
+          New-Item -ItemType Directory -Force -Path dist_installer | Out-Null
+          @'
+          [Setup]
+          AppId={{B74CF460-0FCA-4B31-8D40-7B1B68E5B838}
+          AppName=Guitar Tab AI
+          AppVersion=0.1.0
+          AppPublisher=Giorgi Biganishvili
+          DefaultDirName={localappdata}\Programs\Guitar Tab AI
+          DefaultGroupName=Guitar Tab AI
+          OutputDir=dist_installer
+          OutputBaseFilename=GuitarTabAISetup
+          Compression=lzma2
+          SolidCompression=yes
+          WizardStyle=modern
+          ArchitecturesAllowed=x64compatible
+          ArchitecturesInstallIn64BitMode=x64compatible
+          PrivilegesRequired=lowest
+          UninstallDisplayIcon={app}\GuitarTabAI.exe
+
+          [Files]
+          Source: "dist\GuitarTabAI\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{group}\Guitar Tab AI"; Filename: "{app}\GuitarTabAI.exe"
+          Name: "{autodesktop}\Guitar Tab AI"; Filename: "{app}\GuitarTabAI.exe"
+
+          [Run]
+          Filename: "{app}\GuitarTabAI.exe"; Description: "Launch Guitar Tab AI"; Flags: nowait postinstall skipifsilent
+          '@ | Set-Content -Encoding UTF8 installer.iss
+          $iscc = (Get-ChildItem "C:\Program Files (x86)\Inno Setup*" -Recurse -Filter ISCC.exe -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
+          if (-not $iscc) { throw "ISCC.exe not found" }
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+
+      - name: Verify installer and silent install
+        shell: pwsh
+        working-directory: appsrc
+        run: |
+          $installer = Resolve-Path ".\dist_installer\GuitarTabAISetup.exe"
           $bytes = [System.IO.File]::ReadAllBytes($installer)
-          if ($bytes.Length -lt 2 -or $bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) {
-            throw "Installer is not a valid Windows PE executable"
-          }
-          Write-Host "Verified MZ header: $installer"
-
-      - name: Silent install smoke test
-        shell: pwsh
-        run: |
-          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Installer is not Windows PE" }
           $p = Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Installer failed with exit code $($p.ExitCode)" }
-          $app = "C:\Program Files\Russian Transcriber\Transcriber.exe"
-          if (!(Test-Path $app)) { throw "Installed Transcriber.exe not found at $app" }
-          $proc = Start-Process -FilePath $app -PassThru
-          Start-Sleep -Seconds 5
-          if ($proc.HasExited -and $proc.ExitCode -ne 0) { throw "Installed application exited with code $($proc.ExitCode)" }
-          if (!$proc.HasExited) { Stop-Process -Id $proc.Id -Force }
-          Write-Host "Installed application launched successfully"
-
-      - name: Silent uninstall smoke test
-        shell: pwsh
-        run: |
-          $uninstaller = "C:\Program Files\Russian Transcriber\unins000.exe"
-          if (!(Test-Path $uninstaller)) { throw "Uninstaller not found" }
-          $p = Start-Process -FilePath $uninstaller -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "Uninstaller failed with exit code $($p.ExitCode)" }
-          Write-Host "Uninstall completed successfully"
-
-      - name: Generate SHA256
-        shell: pwsh
-        run: |
-          $installer = Resolve-Path ".\dist_installer\TranscriberSetup.exe"
+          if ($p.ExitCode -ne 0) { throw "Installer returned $($p.ExitCode)" }
+          $installed = Join-Path $env:LOCALAPPDATA "Programs\Guitar Tab AI\GuitarTabAI.exe"
+          if (!(Test-Path $installed)) { throw "Installed GuitarTabAI.exe not found" }
           $hash = (Get-FileHash -Algorithm SHA256 $installer).Hash.ToLowerInvariant()
-          "$hash  TranscriberSetup.exe" | Set-Content ".\dist_installer\SHA256SUMS.txt" -Encoding ascii
+          "$hash  GuitarTabAISetup.exe" | Set-Content ".\dist_installer\SHA256SUMS.txt" -Encoding ascii
           Write-Host "SHA256=$hash"
 
-      - name: Upload Windows installer
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: RussianTranscriber-Windows-1.0.0
+          name: GuitarTabAI-Windows-0.1.0
           path: |
-            dist_installer/TranscriberSetup.exe
-            dist_installer/SHA256SUMS.txt
+            appsrc/dist_installer/GuitarTabAISetup.exe
+            appsrc/dist_installer/SHA256SUMS.txt
           if-no-files-found: error
           compression-level: 0
-
-      - name: Upload build logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: RussianTranscriber-build-logs
-          path: |
-            build/
-            *.log
-            dist_installer/SHA256SUMS.txt
-          if-no-files-found: ignore
